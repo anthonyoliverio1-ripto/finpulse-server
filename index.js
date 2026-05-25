@@ -42,7 +42,7 @@ const fetchFinnhub = async (sym) => {
 
 const fetchYahoo = async () => {
   const syms = Object.values(YAHOO).join(',');
-  const d = await httpsGet(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(syms)}`);
+  const d = await httpsGet(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}`);
   const result = {};
   for (const q of d?.quoteResponse?.result || []) {
     for (const [key, yahooSym] of Object.entries(YAHOO)) {
