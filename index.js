@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-
 const app = express();
 app.use(cors());
 
@@ -19,9 +18,15 @@ const CRYPTO = {
   XRP:'BINANCE:XRPUSDT', BNB:'BINANCE:BNBUSDT', DOGE:'BINANCE:DOGEUSDT', ZEC:'BINANCE:ZECUSDT'
 };
 
+// Yahoo Finance: real futures & commodities
+const YAHOO = {
+  ES:'ES=F', NQ:'NQ=F', YM:'YM=F', RTY:'RTY=F',
+  GC:'GC=F', CL:'CL=F', SI:'SI=F', NG:'NG=F', BZ:'BZ=F', HG:'HG=F'
+};
+
 let cache = { prices: {}, updatedAt: null };
 
-const fetchQ = async (sym) => {
+const fetchFinnhub = async (sym) => {
   try {
     const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${KEY}`);
     const d = await r.json();
@@ -29,21 +34,47 @@ const fetchQ = async (sym) => {
   } catch { return null; }
 };
 
+const fetchYahoo = async () => {
+  try {
+    const syms = Object.values(YAHOO).join(',');
+    const r = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}`, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible)' }
+    });
+    const d = await r.json();
+    const result = {};
+    for (const q of d?.quoteResponse?.result || []) {
+      for (const [key, yahooSym] of Object.entries(YAHOO)) {
+        if (q.symbol === yahooSym && q.regularMarketPrice > 0) {
+          result[key] = q.regularMarketPrice;
+          break;
+        }
+      }
+    }
+    console.log('Yahoo futures/commodities:', result);
+    return result;
+  } catch (e) {
+    console.error('Yahoo error:', e.message);
+    return {};
+  }
+};
+
 const refresh = async () => {
   const prices = {};
   for (const sym of STOCKS) {
-    const p = await fetchQ(sym);
+    const p = await fetchFinnhub(sym);
     if (p) prices[sym] = p;
     await new Promise(r => setTimeout(r, 250));
   }
   for (const [sym, finnSym] of Object.entries(CRYPTO)) {
-    const p = await fetchQ(finnSym);
+    const p = await fetchFinnhub(finnSym);
     if (p) prices[sym] = p;
     await new Promise(r => setTimeout(r, 250));
   }
+  const yahooPrices = await fetchYahoo();
+  Object.assign(prices, yahooPrices);
   if (Object.keys(prices).length > 5) {
     cache = { prices, updatedAt: Date.now() };
-    console.log(`Updated ${Object.keys(prices).length} prices`);
+    console.log(`Refreshed: ${Object.keys(prices).length} prices`);
   }
 };
 
