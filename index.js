@@ -1,6 +1,7 @@
-const fetch = require('node-fetch');
 const express = require('express');
 const cors = require('cors');
+const https = require('https');
+
 const app = express();
 app.use(cors());
 
@@ -19,7 +20,6 @@ const CRYPTO = {
   XRP:'BINANCE:XRPUSDT', BNB:'BINANCE:BNBUSDT', DOGE:'BINANCE:DOGEUSDT', ZEC:'BINANCE:ZECUSDT'
 };
 
-// Yahoo Finance: real futures & commodities
 const YAHOO = {
   ES:'ES=F', NQ:'NQ=F', YM:'YM=F', RTY:'RTY=F',
   GC:'GC=F', CL:'CL=F', SI:'SI=F', NG:'NG=F', BZ:'BZ=F', HG:'HG=F'
@@ -27,36 +27,33 @@ const YAHOO = {
 
 let cache = { prices: {}, updatedAt: null };
 
+const httpsGet = (url) => new Promise((resolve) => {
+  https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+  }).on('error', () => resolve(null));
+});
+
 const fetchFinnhub = async (sym) => {
-  try {
-    const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${KEY}`);
-    const d = await r.json();
-    return d.c > 0 ? d.c : null;
-  } catch { return null; }
+  const d = await httpsGet(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym)}&token=${KEY}`);
+  return d?.c > 0 ? d.c : null;
 };
 
 const fetchYahoo = async () => {
-  try {
-    const syms = Object.values(YAHOO).join(',');
-    const r = await fetch(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${syms}`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible)' }
-    });
-    const d = await r.json();
-    const result = {};
-    for (const q of d?.quoteResponse?.result || []) {
-      for (const [key, yahooSym] of Object.entries(YAHOO)) {
-        if (q.symbol === yahooSym && q.regularMarketPrice > 0) {
-          result[key] = q.regularMarketPrice;
-          break;
-        }
+  const syms = Object.values(YAHOO).join(',');
+  const d = await httpsGet(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(syms)}`);
+  const result = {};
+  for (const q of d?.quoteResponse?.result || []) {
+    for (const [key, yahooSym] of Object.entries(YAHOO)) {
+      if (q.symbol === yahooSym && q.regularMarketPrice > 0) {
+        result[key] = q.regularMarketPrice;
+        break;
       }
     }
-    console.log('Yahoo futures/commodities:', result);
-    return result;
-  } catch (e) {
-    console.error('Yahoo error:', e.message);
-    return {};
   }
+  console.log('Yahoo prices:', result);
+  return result;
 };
 
 const refresh = async () => {
